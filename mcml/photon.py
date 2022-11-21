@@ -1,5 +1,4 @@
 from __future__ import annotations
-import numba as nb
 from numba import njit
 from numba.core import types
 from numba.experimental import structref
