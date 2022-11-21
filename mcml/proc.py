@@ -114,7 +114,6 @@ def sum_scale_result(inp: InputParams, layers: list[Layer], out: OutputParams):
     _sum_2d_Rd(out)
     _sum_2d_A(inp, layers, out)
     _sum_2d_Tt(out)
-    breakpoint()
 
     _scale_rd_tt(inp, out)
     _scale_a(inp, out)

@@ -40,11 +40,11 @@ def spin_theta(g: float) -> float:
     the anisotropy g.
     """
     if g == 0.0:
-        cost = 2 * get_random() - 1
+        cost = 2.0 * get_random() - 1.0
     else:
-        temp = (1 - g * g) / (1 - g + 2 * g * get_random())
-        cost = (1 + g * g - temp * temp) / (2 * g)
-        cost = max(min(cost, 1), -1)
+        temp = (1.0 - g * g) / (1.0 - g + 2.0 * g * get_random())
+        cost = (1.0 + g * g - temp * temp) / (2.0 * g)
+        cost = max(min(cost, 1.0), -1.0)
     return cost  # cos(theta)
 
 
@@ -369,7 +369,7 @@ def cross_down_or_not(
         # total internal reflection
         r = 1.0
     else:
-        r, uz1 = r_fresnel(ni, nt, -uz)
+        r, uz1 = r_fresnel(ni, nt, uz)
 
     if get_random() > r:
         # transmitted to layer - 1

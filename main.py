@@ -34,7 +34,6 @@ def main():
         for _ in tqdm(range(inp.num_photons)):
             do_one_run(rsp, inp, layers, out.a_rz, out.rd_ra, out.tt_ra)
 
-        breakpoint()
         sum_scale_result(inp, layers, out)
         breakpoint()
 
