@@ -2,7 +2,7 @@
 
 Port of [MCML (Monte Carlo Multi-Layered)](https://omlc.org/software/mc/mcml/index.html) to Python.
 
-Requires Python 3.10, numba, and tqdm.
+**Requires Python 3.10, `numba`, and `tqdm`.** As of Nov 2022, `numba` doesn't yet support Python 3.11.
 
 ## Getting started
 
