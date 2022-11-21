@@ -44,10 +44,10 @@ class PhotonType(types.StructRef):
 
 
 class Photon(structref.StructRefProxy):
-    def __new__(cls, w, layer, s, sleft, dead, x, y, z, ux, uy, uz):
+    def __new__(cls, x, y, z, ux, uy, uz, w, layer, s, sleft, dead):
         # overriding __new__ allows us to use keyword arguments
         return structref.StructRefProxy.__new__(
-            cls, w, layer, s, sleft, dead, x, y, z, ux, uy, uz
+            cls, x, y, z, ux, uy, uz, w, layer, s, sleft, dead
         )
 
     @property
@@ -141,25 +141,23 @@ class Photon(structref.StructRefProxy):
 
 @njit
 def make_Photon(r_sp: float, layers: list[Layer]) -> Photon:
-    _w = 1 - r_sp
-    _layer = 1
-    _z = 0.0
-    if layers[1].mua == 0.0 and layers[1].mus == 0.0:
-        _layer = 2
-        _z = layers[2].z0
-    return Photon(
-        w=_w,
-        layer=_layer,
+    photon = Photon(
+        w=1 - r_sp,
+        layer=1,
         s=0.0,
         sleft=0.0,
-        dead=False,
         x=0.0,
         y=0.0,
-        z=_z,
+        z=0.0,
         ux=0.0,
         uy=0.0,
         uz=1.0,
+        dead=False,
     )
+    if layers[1].mua == 0.0 and layers[1].mus == 0.0:
+        photon.layer = 2
+        photon.z = layers[2].z0
+    return photon
 
 
 @njit

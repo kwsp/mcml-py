@@ -59,12 +59,17 @@ def spin(g: float, photon: Photon):
     uz = photon.uz
 
     cost = spin_theta(g)  # cos theta
-    sint = np.sin(1.0 - cost * cost)  # sin theta
+    sint = np.sqrt(1.0 - cost * cost)
+
     psi = 2.0 * np.pi * get_random()
     cosp = np.cos(psi)
-    sinp = np.sin(1.0 - cosp * cosp)
+    sinp = 0.0
+    if psi < np.pi:
+        sinp = np.sqrt(1.0 - cosp * cosp)
+    else:
+        sinp = -np.sqrt(1.0 - cosp * cosp)
 
-    if 1.0 - np.abs(uz) < 1e-8:
+    if np.abs(1.0 - uz) < 1e-8:
         # normal incidence
         # Eq. (3.31)
         photon.ux = sint * cosp
@@ -73,9 +78,9 @@ def spin(g: float, photon: Photon):
     else:
         # regular incidence
         # Eq. (3.30)
-        tmp = np.sqrt(1.0 - uz * uz)
-        photon.ux = sint * (uy * uz * cosp + ux * sinp) / tmp + uy * cost
-        photon.uy = sint * (uy * uz * cost + ux * sint) / tmp + uy * cost
+        tmp = np.sqrt(1.0 - uz * uz) + 1e-9
+        photon.ux = sint * (ux * uz * cosp - uy * sinp) / tmp + ux * cost
+        photon.uy = sint * (uy * uz * cosp + ux * sinp) / tmp + uy * cost
         photon.uz = -sint * cosp * tmp + uz * cost
 
 
@@ -96,7 +101,7 @@ def update_step_size_in_glass(photon: Photon, layers: Layers):
     if uz > 0.0:
         dl_b = (layers[layer].z1 - photon.z) / uz
     elif uz < 0.0:
-        dl_b = layers[layer].z0 - photon.z / uz
+        dl_b = (layers[layer].z0 - photon.z) / uz
 
     photon.s = dl_b
 
@@ -169,11 +174,10 @@ def hit_boundary(photon: Photon, layers: Layers) -> bool:
     else:
         raise ValueError("photon.uz == 0.0, dl_b = inf")
 
-    # Eq. (3.33)
     if uz != 0.0 and photon.s > dl_b:
         # Not horizontal crossing
         mut = layer.mua + layer.mus
-        photon.sleft = (photon.s - dl_b) / mut
+        photon.sleft = (photon.s - dl_b) * mut
         photon.s = dl_b
         return True
 
@@ -192,9 +196,6 @@ def drop(photon: Photon, inp: InputParams, layers: Layers, a_rz: np.ndarray):
     x = photon.x
     y = photon.y
     layer = layers[photon.layer]
-
-    ia = nb.uint(np.arccos(-photon.uz) / inp.da)
-    ia = nb.uint(min(ia, inp.na - 1))
 
     # compute array indices
     iz = nb.uint(photon.z / inp.dz)
@@ -233,7 +234,8 @@ def r_fresnel(
     elif np.abs(1.0 - ca1) < 1e-8:
         # normal incidence
         ca2 = ca1
-        r = ((n2 - n1) / (n2 + n1)) ** 2
+        r = (n2 - n1) / (n2 + n1)
+        r *= r
     elif np.abs(ca1) < 1e-8:
         # very slanted
         ca2 = 0.0
@@ -252,7 +254,13 @@ def r_fresnel(
             cam = ca1 * ca2 + sa1 * sa2  # c- = cc + ss
             sap = sa1 * ca2 + ca1 * sa2  # s+ = sc + cs
             sam = sa1 * ca2 - ca1 * sa2  # s- = sc - cs
-            r = 0.5 * sam * sam * (cam * cam + cap * cap) / (sap * sap * cam * cam)
+            r = (
+                0.5
+                * sam
+                * sam
+                * (cam * cam + cap * cap)
+                / (sap * sap * cam * cam + 1e-9)
+            )
 
     return r, ca2
 
@@ -319,7 +327,7 @@ def cross_up_or_not(
     ni = layers[layer_idx].n
     nt = layers[layer_idx - 1].n
 
-    if -uz <= layers[layer_idx].cos_crit0:
+    if (-uz) <= layers[layer_idx].cos_crit0:
         # total internal reflection
         r = 1.0
     else:
@@ -335,7 +343,7 @@ def cross_up_or_not(
             photon.layer -= 1
             photon.ux *= ni / nt
             photon.uy *= ni / nt
-            photon.uz = -uz
+            photon.uz = -uz1
     else:
         # reflected
         photon.uz = -uz
@@ -357,7 +365,7 @@ def cross_down_or_not(
     ni = layers[layer_idx].n
     nt = layers[layer_idx - 1].n
 
-    if -uz <= layers[layer_idx].cos_crit1:
+    if uz <= layers[layer_idx].cos_crit1:
         # total internal reflection
         r = 1.0
     else:
@@ -365,15 +373,15 @@ def cross_down_or_not(
 
     if get_random() > r:
         # transmitted to layer - 1
-        if layer_idx == 1:
-            photon.uz = -uz1
+        if layer_idx == inp.num_layers:
+            photon.uz = uz1
             record_t(0.0, photon, inp, tt_ra)
             photon.dead = True
         else:
             photon.layer += 1
             photon.ux *= ni / nt
             photon.uy *= ni / nt
-            photon.uz = -uz
+            photon.uz = uz1
     else:
         # reflected
         photon.uz = -uz

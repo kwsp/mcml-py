@@ -220,7 +220,7 @@ class OutputParams:
             rd_a=np.zeros(na),
             a_rz=np.zeros((nr, nz)),
             a_z=np.zeros(nz),
-            a_l=np.zeros(nl),
+            a_l=np.zeros(nl + 2),
             tt_ra=np.zeros((nr, na)),
             tt_r=np.zeros(nr),
             tt_a=np.zeros(na),
