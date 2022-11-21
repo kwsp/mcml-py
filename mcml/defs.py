@@ -3,18 +3,56 @@ Centimeters [cm] are used throughout as the base unit
 Absorption and scattering coefficients measured in [cm^{-1}]
 """
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
+
 import numpy as np
-
-from mcml.rand import get_random
-
 
 WEIGHT = 1e-4
 CHANCE = 0.1
 
 
+class StructMixin:
+    def to_struct(self):
+        """
+        Convert a dataclass instance to a numpy structured array
+        https://numpy.org/doc/stable/user/basics.rec.html
+        """
+        types = []
+        vals = []
+
+        for field in fields(self):
+            name = field.name
+            if name.startswith("_"):
+                continue
+
+            val = getattr(self, field.name)
+            _type = field.type
+
+            if _type.startswith("list"):
+                # special case this for now
+                # TODO: find generic way to handle nested
+                # sequence containers
+                continue
+
+                # assume the sequence contains a dataclass that
+                # can be converted into a numpy structured array
+                # val = np.hstack([v.to_struct() for v in val])
+                # _type = val.dtype
+
+            types.append((name, _type))
+            vals.append(val)
+
+        dtype = np.dtype(types, align=True)
+        try:
+            _struct = np.array([tuple(vals)], dtype=dtype)
+        except Exception as e:
+            breakpoint()
+            print("")
+        return _struct
+
+
 @dataclass
-class Layer:
+class Layer(StructMixin):
     n: float = 1.0  # refractive index
     mua: float = 0.0  # absorption coefficient
     mus: float = 0.0  # scattering coefficient
@@ -30,7 +68,7 @@ class Layer:
 
 
 @dataclass
-class InputParams:
+class InputParams(StructMixin):
     ### 2D homogenous grid system in the r and z direction
     # total no. of grid elements for r, z, and alpha
     nr: int
@@ -47,6 +85,8 @@ class InputParams:
 
     num_layers: int  # no. of layers
     layers: list[Layer]
+
+    _out_fname: str
 
     @classmethod
     def read_mci(cls, fname: str) -> list[InputParams]:
@@ -90,7 +130,7 @@ class InputParams:
             n_layers = parse(next(it), int)[0]
             assert n_layers > 0
 
-            n1 = parse(next(it), int)[0]
+            n1 = parse(next(it), float)[0]
             assert n1 > 0
             layers.append(Layer(n=n1))  # top ambient layer
 
@@ -102,7 +142,7 @@ class InputParams:
 
                 z += _d
 
-            n1 = parse(next(it), int)[0]
+            n1 = parse(next(it), float)[0]
             assert n1 > 0
             layers.append(Layer(n=n1))  # top ambient layer
             # bottom ambient layer
@@ -130,6 +170,7 @@ class InputParams:
                 wth=WEIGHT,
                 num_layers=n_layers,
                 layers=layers,
+                _out_fname=out_fname,
             )
             inputs.append(inp)
 
@@ -137,7 +178,7 @@ class InputParams:
 
 
 @dataclass
-class OutputParams:
+class OutputParams(StructMixin):
     # specular reflectance
     rsp: float
     rd_ra: np.ndarray  # 2D distribution of diffuse reflectance [1/cm^2 sr]
@@ -181,7 +222,7 @@ class OutputParams:
 
 
 @dataclass
-class Photon:
+class Photon(StructMixin):
     w: float = 1  # weight
     layer: int = 1  # index of layer where photon packet resides
     # scatters: int = 0  # no. of scattering events experienced
@@ -209,25 +250,11 @@ class Photon:
 
         return cls(w=w)
 
-    def hop(self):
-        """
-        Move the photon s away in the current layer of medium
-        """
+    @classmethod
+    def init_(cls, r_sp: float, layers: list[Layer]) -> Photon:
+        w = 1 - r_sp
+        if layers["mua"][1] == 0.0 and layers["mua"][1] == 0.0:
+            z = layers["z0"][2]
+            return cls(w=w, layer=2, z=z)
 
-        # Eq. (3.23)
-        s = self.s
-        self.x += s * self.ux
-        self.y += s * self.uy
-        self.z += s * self.uz
-
-    def roulette(self):
-        """
-        The photon weight is small, and the photon packet tries to survive a roulette
-        """
-        # Eq. (3.44)
-        if self.w == 0.0:
-            self.dead = True
-        elif get_random() < CHANCE:
-            self.w /= CHANCE
-        else:
-            self.dead = True
+        return cls(w=w)

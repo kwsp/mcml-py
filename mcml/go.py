@@ -1,10 +1,14 @@
 import numpy as np
+from numba import njit
 
-from mcml.defs import Photon, Layer, InputParams, OutputParams
+from mcml.defs import Photon, Layer, InputParams, CHANCE
 from mcml.rand import get_random
 
+Layers = list[Layer]
 
-def calc_r_specular(layers: list[Layer]) -> float:
+
+@njit
+def calc_r_specular(layers: Layers) -> float:
     """
     Compute the specular reflection.
 
@@ -27,6 +31,7 @@ def calc_r_specular(layers: list[Layer]) -> float:
     return r1
 
 
+@njit
 def spin_theta(g: float) -> float:
     """
     Sample a new theta angle for photon propagation given
@@ -41,6 +46,7 @@ def spin_theta(g: float) -> float:
     return cost  # cos(theta)
 
 
+@njit
 def spin(g: float, photon: Photon):
     """
     Choose a new direction for photon propagation by sampling
@@ -56,7 +62,7 @@ def spin(g: float, photon: Photon):
     cosp = np.cos(psi)
     sinp = np.sin(1.0 - cosp * cosp)
 
-    if np.isclose(np.abs(uz), 1, atol=1e-6):
+    if 1.0 - np.abs(uz) < 1e-8:
         # normal incidence
         # Eq. (3.31)
         photon.ux = sint * cosp
@@ -71,7 +77,8 @@ def spin(g: float, photon: Photon):
         photon.uz = -sint * cosp * tmp + uz * cost
 
 
-def update_step_size_in_glass(photon: Photon, inp: InputParams):
+@njit
+def update_step_size_in_glass(photon: Photon, layers: Layers):
     """
     If uz != 0, return the photon step size in glass.
     Otherwise return 0.
@@ -85,22 +92,23 @@ def update_step_size_in_glass(photon: Photon, inp: InputParams):
     uz = photon.uz
     dl_b = 0.0
     if uz > 0.0:
-        dl_b = (inp.layers[layer].z1 - photon.z) / uz
+        dl_b = (layers[layer].z1 - photon.z) / uz
     elif uz < 0.0:
-        dl_b = inp.layers[layer].z0 - photon.z / uz
+        dl_b = layers[layer].z0 - photon.z / uz
 
     photon.s = dl_b
 
 
-def update_step_size_in_tissue(photon: Photon, inp: InputParams):
+@njit
+def update_step_size_in_tissue(photon: Photon, layers: Layers):
     """
     Pick a step size for a photon packet when it is in tissue.
     If sleft is zero, make a new step size with -log(rnd)/(mua + mus)
     Else, pick up the leftover in sleft
     """
     layer = photon.layer
-    mua = inp.layers[layer].mua
-    mus = inp.layers[layer].mus
+    mua = layers[layer].mua
+    mus = layers[layer].mus
 
     if photon.sleft == 0.0:
         # make new step
@@ -112,14 +120,42 @@ def update_step_size_in_tissue(photon: Photon, inp: InputParams):
         photon.sleft = 0.0
 
 
-def hit_boundary(photon: Photon, inp: InputParams) -> bool:
+@njit
+def hop(photon: Photon):
+    """
+    Move the photon s away in the current layer of medium
+    """
+
+    # Eq. (3.23)
+    s = photon.s
+    photon.x += s * photon.ux
+    photon.y += s * photon.uy
+    photon.z += s * photon.uz
+
+
+@njit
+def roulette(photon: Photon):
+    """
+    The photon weight is small, and the photon packet tries to survive a roulette
+    """
+    # Eq. (3.44)
+    if photon.w == 0.0:
+        photon.dead = True
+    elif get_random() < CHANCE:
+        photon.w /= CHANCE
+    else:
+        photon.dead = True
+
+
+@njit
+def hit_boundary(photon: Photon, layers: Layers) -> bool:
     """
     Check if the step will hit the boundary.
     Return True if hit
 
     If hit, photo.s and sleft are updated
     """
-    layer = inp.layers[photon.layer]
+    layer = layers[photon.layer]
     uz = photon.uz
 
     # distance to the boundary
@@ -142,7 +178,8 @@ def hit_boundary(photon: Photon, inp: InputParams) -> bool:
     return False
 
 
-def drop(photon: Photon, inp: InputParams, out: OutputParams):
+@njit
+def drop(photon: Photon, inp: InputParams, layers: Layers, a_rz: np.ndarray):
     """
     Drop photon weight inside the tissue (not glass)
 
@@ -152,14 +189,17 @@ def drop(photon: Photon, inp: InputParams, out: OutputParams):
     """
     x = photon.x
     y = photon.y
-    layer = inp.layers[photon.layer]
+    layer = layers[photon.layer]
+
+    ia = (np.arccos(-photon.uz) / inp.da).astype(np.int64)
+    ia = np.clip(ia, a_min=0, a_max=inp.na - 1)
 
     # compute array indices
-    iz = int(photon.z / inp.dz)
-    iz = min(inp.nz - 1, iz)
+    iz = (photon.z / inp.dz).astype(np.int64)
+    iz = np.clip(iz, a_min=0, a_max=inp.nz-1)
 
-    ir = int(np.sqrt(x * x + y * y) / inp.dr)
-    ir = min(inp.nr - 1, ir)
+    ir = (np.sqrt(x * x + y * y) / inp.dr).astype(np.int64)
+    ir = np.clip(ir, a_min=0, a_max=inp.nr-1)
 
     # update photon weight
     mua = layer.mua
@@ -168,9 +208,10 @@ def drop(photon: Photon, inp: InputParams, out: OutputParams):
     photon.w -= dw
 
     # assign dw to the absorption array element
-    out.a_rz[ir][iz] += dw
+    a_rz[ir][iz] += dw
 
 
+@njit
 def r_fresnel(
     n1: float,  # incident refractive index
     n2: float,  # transmit refractive index
@@ -187,11 +228,11 @@ def r_fresnel(
         # matched boundary
         ca2 = ca1
         r = 0.0
-    elif np.isclose(ca1, 1):
+    elif np.abs(1.0 - ca1) < 1e-8:
         # normal incidence
         ca2 = ca1
         r = ((n2 - n1) / (n2 + n1)) ** 2
-    elif np.isclose(ca1, 0):
+    elif np.abs(ca1) < 1e-8:
         # very slanted
         ca2 = 0.0
         r = 1.0
@@ -214,7 +255,8 @@ def r_fresnel(
     return r, ca2
 
 
-def record_r(refl: float, photon: Photon, inp: InputParams, out: OutputParams):
+@njit
+def record_r(refl: float, photon: Photon, inp: InputParams, rd_ra: np.ndarray):
     """
     Record the photon weight exiting the first layer (uz<0)
     to the reflection array
@@ -224,19 +266,20 @@ def record_r(refl: float, photon: Photon, inp: InputParams, out: OutputParams):
     x = photon.x
     y = photon.y
 
-    ir = int(np.sqrt(x * x + y * y) / inp.dr)
-    ir = min(inp.nr - 1, ir)
+    ir = (np.sqrt(x * x + y * y) / inp.dr).astype(np.int64)
+    ir = np.clip(ir, a_min=0, a_max=inp.nr - 1)
 
-    ia = int(np.arccos(-photon.uz) / inp.da)
-    ia = max(inp.na - 1, ia)
+    ia = (np.arccos(-photon.uz) / inp.da).astype(np.int64)
+    ia = np.clip(ia, a_min=0, a_max=inp.na - 1)
 
     # assign photon to the reflection array
-    out.rd_ra[ir][ia] += photon.w * (1.0 - refl)
+    rd_ra[ir][ia] += photon.w * (1.0 - refl)
 
     photon.w *= refl
 
 
-def record_t(refl: float, photon: Photon, inp: InputParams, out: OutputParams):
+@njit
+def record_t(refl: float, photon: Photon, inp: InputParams, tt_ra: np.ndarray):
     """
     Record the photon weight exiting the last layer (uz>0)
     to the transmittance array
@@ -246,19 +289,22 @@ def record_t(refl: float, photon: Photon, inp: InputParams, out: OutputParams):
     x = photon.x
     y = photon.y
 
-    ir = int(np.sqrt(x * x + y * y) / inp.dr)
-    ir = min(inp.nr - 1, ir)
+    ir = (np.sqrt(x * x + y * y) / inp.dr).astype(np.int64)
+    ir = np.clip(ir, a_min=0, a_max=inp.nr - 1)
 
-    ia = int(np.arccos(-photon.uz) / inp.da)
-    ia = max(inp.na - 1, ia)
+    ia = (np.arccos(-photon.uz) / inp.da).astype(np.int64)
+    ia = np.clip(ia, a_min=0, a_max=inp.na - 1)
 
     # assign photon to the reflection array
-    out.tt_ra[ir][ia] += photon.w * (1.0 - refl)
+    tt_ra[ir][ia] += photon.w * (1.0 - refl)
 
     photon.w *= refl
 
 
-def cross_up_or_not(photon: Photon, inp: InputParams, out: OutputParams):
+@njit
+def cross_up_or_not(
+    photon: Photon, inp: InputParams, layers: Layers, rd_ra: np.ndarray
+):
     """
     Decide whether the photon will be transmitted or reflected in the
     upper boundary (uz < 0) of the current layer
@@ -268,10 +314,10 @@ def cross_up_or_not(photon: Photon, inp: InputParams, out: OutputParams):
 
     r = 0.0  # reflectance
     layer_idx = photon.layer
-    ni = inp.layers[layer_idx].n
-    nt = inp.layers[layer_idx - 1].n
+    ni = layers[layer_idx].n
+    nt = layers[layer_idx - 1].n
 
-    if -uz <= inp.layers[layer_idx].cos_crit0:
+    if -uz <= layers[layer_idx].cos_crit0:
         # total internal reflection
         r = 1.0
     else:
@@ -281,7 +327,7 @@ def cross_up_or_not(photon: Photon, inp: InputParams, out: OutputParams):
         # transmitted to layer - 1
         if layer_idx == 1:
             photon.uz = -uz1
-            record_r(0.0, photon, inp, out)
+            record_r(0.0, photon, inp, rd_ra)
             photon.dead = True
         else:
             photon.layer -= 1
@@ -293,7 +339,10 @@ def cross_up_or_not(photon: Photon, inp: InputParams, out: OutputParams):
         photon.uz = -uz
 
 
-def cross_down_or_not(photon: Photon, inp: InputParams, out: OutputParams):
+@njit
+def cross_down_or_not(
+    photon: Photon, inp: InputParams, layers: Layers, tt_ra: np.ndarray
+):
     """
     Decide whether the photon will be transmitted or reflected in the
     lower boundary (uz > 0) of the current layer
@@ -303,10 +352,10 @@ def cross_down_or_not(photon: Photon, inp: InputParams, out: OutputParams):
 
     r = 0.0  # reflectance
     layer_idx = photon.layer
-    ni = inp.layers[layer_idx].n
-    nt = inp.layers[layer_idx - 1].n
+    ni = layers[layer_idx].n
+    nt = layers[layer_idx - 1].n
 
-    if -uz <= inp.layers[layer_idx].cos_crit1:
+    if -uz <= layers[layer_idx].cos_crit1:
         # total internal reflection
         r = 1.0
     else:
@@ -316,7 +365,7 @@ def cross_down_or_not(photon: Photon, inp: InputParams, out: OutputParams):
         # transmitted to layer - 1
         if layer_idx == 1:
             photon.uz = -uz1
-            record_r(0.0, photon, inp, out)
+            record_t(0.0, photon, inp, tt_ra)
             photon.dead = True
         else:
             photon.layer += 1
@@ -328,14 +377,28 @@ def cross_down_or_not(photon: Photon, inp: InputParams, out: OutputParams):
         photon.uz = -uz
 
 
-def cross_or_not(photon: Photon, inp: InputParams, out: OutputParams):
+@njit
+def cross_or_not(
+    photon: Photon,
+    inp: InputParams,
+    layers: Layers,
+    rd_ra: np.ndarray,
+    tt_ra: np.ndarray,
+):
     if photon.uz < 0.0:
-        cross_up_or_not(photon, inp, out)
+        cross_up_or_not(photon, inp, layers, rd_ra)
     else:
-        cross_down_or_not(photon, inp, out)
+        cross_down_or_not(photon, inp, layers, tt_ra)
 
 
-def hop_in_glass(photon: Photon, inp: InputParams, out: OutputParams):
+@njit
+def hop_in_glass(
+    photon: Photon,
+    inp: InputParams,
+    layers: Layers,
+    rd_ra: np.ndarray,
+    tt_ra: np.ndarray,
+):
     """
     Move the photon packet in glass layer
     Horizontal photons are killed because they'll never interact
@@ -345,12 +408,20 @@ def hop_in_glass(photon: Photon, inp: InputParams, out: OutputParams):
         # horizontal photon in glass is killed
         photon.dead = True
     else:
-        update_step_size_in_glass(photon, inp)
-        photon.hop()
-        cross_or_not(photon, inp, out)
+        update_step_size_in_glass(photon, layers)
+        hop(photon)
+        cross_or_not(photon, inp, layers, rd_ra, tt_ra)
 
 
-def hop_drop_spin_in_tissue(photon: Photon, inp: InputParams, out: OutputParams):
+@njit
+def hop_drop_spin_in_tissue(
+    photon: Photon,
+    inp: InputParams,
+    layers: Layers,
+    a_rz: np.ndarray,
+    rd_ra: np.ndarray,
+    tt_ra: np.ndarray,
+):
     """
     Set a step size, move the photon, drop some weight,
     choose a new photon direction for propagation.
@@ -361,23 +432,31 @@ def hop_drop_spin_in_tissue(photon: Photon, inp: InputParams, out: OutputParams)
     Then move the photon in the current or transmission medium with the
     unfinished stepsize to interaction site.
     """
-    update_step_size_in_tissue(photon, inp)
+    update_step_size_in_tissue(photon, layers)
 
-    if hit_boundary(photon, inp):
-        photon.hop()  # move to boundary plane
-        cross_or_not(photon, inp, out)
+    if hit_boundary(photon, layers):
+        hop(photon)
+        cross_or_not(photon, inp, layers, rd_ra, tt_ra)
     else:
-        photon.hop()
-        drop(photon, inp, out)
-        spin(inp.layers[photon.layer].g, photon)
+        hop(photon)
+        drop(photon, inp, layers, a_rz)
+        spin(layers[photon.layer].g, photon)
 
 
-def hop_drop_spin(photon: Photon, inp: InputParams, out: OutputParams):
-    layer = inp.layers[photon.layer]
+@njit
+def hop_drop_spin(
+    photon: Photon,
+    inp: InputParams,
+    layers: Layers,
+    a_rz: np.ndarray,
+    rd_ra: np.ndarray,
+    tt_ra,
+):
+    layer = layers[photon.layer]
     if layer.mua == 0.0 and layer.mus == 0.0:
-        hop_in_glass(photon, inp, out)
+        hop_in_glass(photon, inp, layers, rd_ra, tt_ra)
     else:
-        hop_drop_spin_in_tissue(photon, inp, out)
+        hop_drop_spin_in_tissue(photon, inp, layers, a_rz, rd_ra, tt_ra)
 
     if not photon.dead and photon.w < inp.wth:
-        photon.roulette()
+        roulette(photon)
