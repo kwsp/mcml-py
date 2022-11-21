@@ -1,11 +1,14 @@
 import numpy as np
 from numba import njit
+import numba as nb
 
-from mcml.defs import Photon, Layer, InputParams, CHANCE
+from mcml.defs import Layer, InputParams, CHANCE
+from mcml.photon import Photon
 from mcml.rand import get_random
 
 Layers = list[Layer]
 
+njit = lambda x: x
 
 @njit
 def calc_r_specular(layers: Layers) -> float:
@@ -153,7 +156,7 @@ def hit_boundary(photon: Photon, layers: Layers) -> bool:
     Check if the step will hit the boundary.
     Return True if hit
 
-    If hit, photo.s and sleft are updated
+    If hit, photon.s and sleft are updated
     """
     layer = layers[photon.layer]
     uz = photon.uz
@@ -165,7 +168,9 @@ def hit_boundary(photon: Photon, layers: Layers) -> bool:
     elif uz < 0.0:
         dl_b = (layer.z0 - photon.z) / uz
     else:
-        raise ValueError("photon.uz == 0.0, dl_b = inf")
+        # raise ValueError("photon.uz == 0.0, dl_b = inf")
+        breakpoint()
+        print("")
 
     # Eq. (3.33)
     if uz != 0.0 and photon.s > dl_b:
@@ -191,15 +196,16 @@ def drop(photon: Photon, inp: InputParams, layers: Layers, a_rz: np.ndarray):
     y = photon.y
     layer = layers[photon.layer]
 
-    ia = (np.arccos(-photon.uz) / inp.da).astype(np.int64)
-    ia = np.clip(ia, a_min=0, a_max=inp.na - 1)
+    
+    ia = nb.uint(np.arccos(-photon.uz) / inp.da)
+    ia = nb.uint(min(ia, inp.na - 1))
 
     # compute array indices
-    iz = (photon.z / inp.dz).astype(np.int64)
-    iz = np.clip(iz, a_min=0, a_max=inp.nz-1)
+    iz = nb.uint(photon.z / inp.dz)
+    iz = nb.uint(min(iz, inp.nz - 1))
 
-    ir = (np.sqrt(x * x + y * y) / inp.dr).astype(np.int64)
-    ir = np.clip(ir, a_min=0, a_max=inp.nr-1)
+    ir = nb.uint(np.sqrt(x * x + y * y) / inp.dr)
+    ir = nb.uint(min(ir, inp.nr - 1))
 
     # update photon weight
     mua = layer.mua
@@ -266,11 +272,11 @@ def record_r(refl: float, photon: Photon, inp: InputParams, rd_ra: np.ndarray):
     x = photon.x
     y = photon.y
 
-    ir = (np.sqrt(x * x + y * y) / inp.dr).astype(np.int64)
-    ir = np.clip(ir, a_min=0, a_max=inp.nr - 1)
+    ir = nb.uint(np.sqrt(x * x + y * y) / inp.dr)
+    ir = np.uint(min(ir, inp.nr - 1))
 
-    ia = (np.arccos(-photon.uz) / inp.da).astype(np.int64)
-    ia = np.clip(ia, a_min=0, a_max=inp.na - 1)
+    ia = nb.uint(np.arccos(-photon.uz) / inp.da)
+    ia = nb.uint(min(ia, inp.na - 1))
 
     # assign photon to the reflection array
     rd_ra[ir][ia] += photon.w * (1.0 - refl)
@@ -289,11 +295,11 @@ def record_t(refl: float, photon: Photon, inp: InputParams, tt_ra: np.ndarray):
     x = photon.x
     y = photon.y
 
-    ir = (np.sqrt(x * x + y * y) / inp.dr).astype(np.int64)
-    ir = np.clip(ir, a_min=0, a_max=inp.nr - 1)
+    ir = nb.uint(np.sqrt(x * x + y * y) / inp.dr)
+    ir = nb.uint(min(ir, inp.nr - 1))
 
-    ia = (np.arccos(-photon.uz) / inp.da).astype(np.int64)
-    ia = np.clip(ia, a_min=0, a_max=inp.na - 1)
+    ia = nb.uint(np.arccos(-photon.uz) / inp.da)
+    ia = nb.uint(min(ia, inp.na - 1))
 
     # assign photon to the reflection array
     tt_ra[ir][ia] += photon.w * (1.0 - refl)
