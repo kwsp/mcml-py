@@ -4,7 +4,7 @@ Absorption and scattering coefficients measured in [cm^{-1}]
 """
 from __future__ import annotations
 from typing import NamedTuple
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 import numpy as np
 from numba.typed import List
 
@@ -13,44 +13,44 @@ WEIGHT = 1e-4
 CHANCE = 0.1
 
 
-class StructMixin:
-    def to_struct(self):
-        """
-        Convert a dataclass instance to a numpy structured array
-        https://numpy.org/doc/stable/user/basics.rec.html
-        """
-        types = []
-        vals = []
+# class StructMixin:
+# def to_struct(self):
+# """
+# Convert a dataclass instance to a numpy structured array
+# https://numpy.org/doc/stable/user/basics.rec.html
+# """
+# types = []
+# vals = []
 
-        for field in fields(self):
-            name = field.name
-            if name.startswith("_"):
-                continue
+# for field in fields(self):
+# name = field.name
+# if name.startswith("_"):
+# continue
 
-            val = getattr(self, field.name)
-            _type = field.type
+# val = getattr(self, field.name)
+# _type = field.type
 
-            if _type.startswith("list"):
-                # special case this for now
-                # TODO: find generic way to handle nested
-                # sequence containers
-                continue
+# if _type.startswith("list"):
+# # special case this for now
+# # TODO: find generic way to handle nested
+# # sequence containers
+# continue
 
-                # assume the sequence contains a dataclass that
-                # can be converted into a numpy structured array
-                # val = np.hstack([v.to_struct() for v in val])
-                # _type = val.dtype
+# # assume the sequence contains a dataclass that
+# # can be converted into a numpy structured array
+# # val = np.hstack([v.to_struct() for v in val])
+# # _type = val.dtype
 
-            types.append((name, _type))
-            vals.append(val)
+# types.append((name, _type))
+# vals.append(val)
 
-        dtype = np.dtype(types, align=True)
-        try:
-            _struct = np.array([tuple(vals)], dtype=dtype)
-        except Exception as e:
-            breakpoint()
-            print("")
-        return _struct
+# dtype = np.dtype(types, align=True)
+# try:
+# _struct = np.array([tuple(vals)], dtype=dtype)
+# except Exception as e:
+# breakpoint()
+# print("")
+# return _struct
 
 
 class Layer(NamedTuple):
@@ -225,3 +225,122 @@ class OutputParams:
             tt_r=np.zeros(nr),
             tt_a=np.zeros(na),
         )
+
+
+def write_mco(
+    fname: str,
+    inp: InputParams,
+    layers: list[Layer],
+    out: OutputParams,
+    elapsed_s: float,
+):
+    s = open(fname, "w")
+
+    s.write("A1 # Output file produced by mcml-py\n\n")
+    s.write(
+        """
+####
+# Data categories include: 
+# InParm, RAT, 
+# A_l, A_z, Rd_r, Rd_a, Tt_r, Tt_a, 
+# A_rz, Rd_ra, Tt_ra 
+####\n\n"""
+    )
+    elapsed_h = elapsed_s / 60 / 60
+    s.write(
+        f"User time: {elapsed_s:.2f} sec = {elapsed_h:.2f} hr. Simulation time of this run.\n"
+    )
+
+    ### Write input params
+    s.write("\nInParm  # Input parameters. cm is used\n")
+    s.write(f"{fname} A  # output filename.\n")
+    s.write(f"{inp.num_photons}  # No. of photons\n")
+    s.write(f"{inp.dz} {inp.dr}  # dz, dr [cm]\n")
+    s.write(f"{inp.nz} {inp.nr} {inp.na}  # No. of dz, dr, da.\n")
+
+    s.write(f"\n{inp.num_layers}  # No. of layers\n")
+    s.write("#n	mua	mus	g	d	# One line for each layer\n")
+    s.write(f"{layers[0].n}  # n for medium above\n")
+    for i in range(1, inp.num_layers + 1):
+        d = layers[i].z1 - layers[i].z0
+        s.write(
+            f"{layers[i].n} {layers[i].mua} {layers[i].mus} {layers[i].g} {d}  # n for medium above\n"
+        )
+    s.write(f"{layers[-1].n}  # n for medium below\n")
+
+    ### RAT
+    s.write("\nRAT  # Reflectance, absorption, transmission. \n")
+    s.write(f"{out.rsp:.6g}  # Specular reflectance [-]\n")
+    s.write(f"{out.rd:.6g}  # Diffuse reflectance [-]\n")
+    s.write(f"{out.a:.6g}  # Absorbed fraction [-]\n")
+    s.write(f"{out.tt:.6g}  # Transmittance [-]\n\n")
+
+    ### Write A_l, A_z
+    s.write("A_l #Absorption as a function of layer. [-]\n")
+    for i in range(1, inp.num_layers + 1):
+        s.write(f"\t{out.a_l[i]:.6g}\n")
+
+    s.write("\nA_z #A[0], [1],..A[nz-1]. [1/cm]\n")
+    for i in range(inp.nz):
+        s.write(f"\t{out.a_z[i]:.4e}\n")
+
+    s.write("\nRd_r #Rd[0], [1],..Rd[nr-1]. [1/cm2]\n")
+    for i in range(inp.nr):
+        s.write(f"\t{out.rd_r[i]:.4e}\n")
+
+    s.write("\nRd_a #Rd[0], [1],..Rd[na-1]. [sr-1]\n")
+    for i in range(inp.na):
+        s.write(f"\t{out.rd_a[i]:.4e}\n")
+
+    s.write("\nTt_r #Tt[0], [1],..Tt[nr-1]. [1/cm2]\n")
+    for i in range(inp.nr):
+        s.write(f"\t{out.tt_r[i]:.4e}\n")
+
+    s.write("\nTt_a #Tt[0], [1],..Tt[na-1]. [sr-1]\n")
+    for i in range(inp.na):
+        s.write(f"\t{out.tt_a[i]:.4e}\n")
+
+    s.write(
+        """\n
+# A[r][z]. [1/cm3]
+# A[0][0], [0][1],..[0][nz-1]
+# A[1][0], [1][1],..[1][nz-1]
+# ...
+# A[nr-1][0], [nr-1][1],..[nr-1][nz-1]\nA_rz\n"""
+    )
+    for r in range(inp.nr):
+        _s = "\t".join(f"{x:.4e}" for x in out.a_rz[r])
+        s.write("\t")
+        s.write(_s)
+        s.write("\n")
+
+    s.write(
+        """\n
+# Rd[r][angle]. [1/(cm2sr)].
+# Rd[0][0], [0][1],..[0][na-1]
+# Rd[1][0], [1][1],..[1][na-1]
+# ...
+# Rd[nr-1][0], [nr-1][1],..[nr-1][na-1]\nRd_ra"""
+    )
+    for r in range(inp.nr):
+        _s = "\t".join(f"{x:.4e}" for x in out.rd_ra[r])
+        s.write("\t")
+        s.write(_s)
+        s.write("\n")
+
+    s.write(
+        """\n
+# Tt[r][angle]. [1/(cm2sr)].
+# Tt[0][0], [0][1],..[0][na-1]
+# Tt[1][0], [1][1],..[1][na-1]
+# ...
+# Tt[nr-1][0], [nr-1][1],..[nr-1][na-1]\nTt_ra\n"""
+    )
+    for r in range(inp.nr):
+        _s = "\t".join(f"{x:.4e}" for x in out.tt_ra[r])
+        s.write("\t")
+        s.write(_s)
+        s.write("\n")
+
+    s.write("\n")
+    s.close()

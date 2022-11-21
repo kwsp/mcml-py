@@ -172,7 +172,7 @@ def hit_boundary(photon: Photon, layers: Layers) -> bool:
     elif uz < 0.0:
         dl_b = (layer.z0 - photon.z) / uz
     else:
-        raise ValueError("photon.uz == 0.0, dl_b = inf")
+        dl_b = np.inf
 
     if uz != 0.0 and photon.s > dl_b:
         # Not horizontal crossing
