@@ -42,6 +42,8 @@ def do_one_run(rsp: float, inp: InputParams, layers: go.Layers, out: OutputParam
     for _ in tqdm(range(inp.num_photons)):
         launch_one_photon(rsp, inp, layers, out.a_rz, out.rd_ra, out.tt_ra)
 
+    # launch_one_photon saves unscaled results to the 2D buffers.
+    # calculate the 1D results and scale all results properly
     sum_scale_result(inp, layers, out)
 
 
@@ -61,17 +63,23 @@ def cli():
 def main():
     args = cli()
 
+    # parse the input MCI file
     inps = read_mci(args.input_file)
 
     for i, (inp, layers, out_fname) in enumerate(inps):
+        # calculate specular reflectance
         rsp = go.calc_r_specular(layers)
+
+        # initialize output (result) buffers
         out = OutputParams.init(rsp, inp)
 
+        # run the current simulation as define by the input file
         print(f"Running simulation {i} . . .")
         _start = time.perf_counter()
         do_one_run(rsp, inp, layers, out)
         elapsed = time.perf_counter() - _start
 
+        # write results to the MCO file named in the input MCI
         write_mco(out_fname, inp, layers, out, elapsed)
 
 

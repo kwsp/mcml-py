@@ -1,9 +1,71 @@
+"""
+This file defines the Photon data structure described in Ch 3.4.2
+
+The only public function from this file is `make_Photon`, which constructs a photon object.
+
+    "x", "y", "z" represents the coordinates of a photon packet,
+    (x, y, z), respectively.
+
+    "ux", "uy", and "uz" represent the direction cosines of the propagation 
+    direction of the photon packet, {μ_x, μ_y, μ_z}, respectively. 
+
+    "w" represents the weight of the photon packet, W.
+
+    "dead" repreesnts the status of the photon. It is set to True when the 
+    photon is terminated.
+
+    "s" represents the dimensionless step size, defined as the integration 
+    of the extinction coefficient μ_t over the trajectory of the photon packet.
+    In a homogenous medium, "s" is simply the physical path length multiplied
+    by the extinction coefficient
+
+    "layer" is the index of the layer in which the photon packet resides; 
+    it is updated only when the photon leaves the current layer.
+
+
+"""
 from __future__ import annotations
 from numba import njit
 from numba.core import types
 from numba.experimental import structref
 
 from mcml.defs import Layer
+
+
+@njit
+def make_Photon(
+    r_sp: float, layers: list[Layer], x=0.0, y=0.0, z=0.0, ux=0.0, uy=0.0, uz=1.0
+) -> Photon:
+    """
+    Constructor for a Photon object.
+    This is the only public API of this module
+    """
+    photon = Photon(
+        w=1 - r_sp,
+        layer=1,
+        s=0.0,
+        sleft=0.0,
+        x=float(x),
+        y=float(y),
+        z=float(z),
+        ux=float(ux),
+        uy=float(uy),
+        uz=float(uz),
+        dead=False,
+    )
+    # check if the first layer is clear
+    if layers[1].mua == 0.0 and layers[1].mus == 0.0:
+        photon.layer = 2
+        photon.z = layers[2].z0
+    return photon
+
+
+"""
+Implementation details beyond this point.
+
+Photon is defined as a Numba "structref", currently the best mutable heterogenous
+datastructure supported by Numba that acts like a dataclass.
+"""
 
 
 @structref.register
@@ -136,27 +198,6 @@ class Photon(structref.StructRefProxy):
     @uz.setter
     def uz(self, val):
         return Photon_set_uz(self, val)
-
-
-@njit
-def make_Photon(r_sp: float, layers: list[Layer]) -> Photon:
-    photon = Photon(
-        w=1 - r_sp,
-        layer=1,
-        s=0.0,
-        sleft=0.0,
-        x=0.0,
-        y=0.0,
-        z=0.0,
-        ux=0.0,
-        uy=0.0,
-        uz=1.0,
-        dead=False,
-    )
-    if layers[1].mua == 0.0 and layers[1].mus == 0.0:
-        photon.layer = 2
-        photon.z = layers[2].z0
-    return photon
 
 
 @njit
