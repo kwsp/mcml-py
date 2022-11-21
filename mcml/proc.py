@@ -3,6 +3,9 @@ import numpy as np
 
 
 def _sum_2d_Rd(out: OutputParams):
+    """
+    Get 1D array elements by summing the 2D array elements.
+    """
     out.rd_r = out.rd_ra.sum(axis=1)
     out.rd_a = out.rd_ra.sum(axis=0)
     out.rd = out.rd_r.sum()
@@ -26,6 +29,9 @@ def _iz_to_layer(Iz: int, dz: float, layers: list[Layer]) -> int:
 
 
 def _sum_2d_A(inp: InputParams, layers: list[Layer], out: OutputParams):
+    """
+    Get 1D array elements by summing the 2D array elements.
+    """
     out.a_z = out.a_rz.sum(axis=0)
 
     for iz in range(0, inp.nz):
@@ -35,6 +41,9 @@ def _sum_2d_A(inp: InputParams, layers: list[Layer], out: OutputParams):
 
 
 def _sum_2d_Tt(out: OutputParams):
+    """
+    Get 1D array elements by summing the 2D array elements.
+    """
     out.tt_r = out.tt_ra.sum(axis=1)
     out.tt_a = out.tt_ra.sum(axis=0)
     out.tt = out.tt_r.sum()
@@ -84,6 +93,9 @@ def _scale_rd_tt(inp: InputParams, out: OutputParams):
 
 
 def _scale_a(inp: InputParams, out: OutputParams):
+    """
+    Scale absorption arrays
+    """
     nr = inp.nr
     nz = inp.nz
     dr = inp.dr
@@ -111,6 +123,9 @@ def _scale_a(inp: InputParams, out: OutputParams):
 
 
 def sum_scale_result(inp: InputParams, layers: list[Layer], out: OutputParams):
+    """
+    Sum and scale results of the current run
+    """
     _sum_2d_Rd(out)
     _sum_2d_A(inp, layers, out)
     _sum_2d_Tt(out)
