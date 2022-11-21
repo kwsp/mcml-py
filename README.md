@@ -22,7 +22,7 @@ Activate the virtual environment:
 conda activate mcml
 ```
 
-Run the MCML main program with a sample imput file:
+Run the MCML main program with a sample input file:
 
 ```
 python3 main.py sample.mci
