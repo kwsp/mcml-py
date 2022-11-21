@@ -37,7 +37,7 @@ def launch_one_photon(
 
 def do_one_run(rsp: float, inp: InputParams, layers: go.Layers, out: OutputParams):
     """
-    Run one simulation.
+    Run one simulation by launching `num_photons` as defined by the input.
     """
     for _ in tqdm(range(inp.num_photons)):
         launch_one_photon(rsp, inp, layers, out.a_rz, out.rd_ra, out.tt_ra)
