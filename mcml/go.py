@@ -358,12 +358,12 @@ def cross_down_or_not(
     lower boundary (uz > 0) of the current layer
     """
     uz = photon.uz
-    uz1 = 0.0
+    uz1 = 0.0  # cosine of transmission alpha
 
     r = 0.0  # reflectance
     layer_idx = photon.layer
     ni = layers[layer_idx].n
-    nt = layers[layer_idx - 1].n
+    nt = layers[layer_idx + 1].n
 
     if uz <= layers[layer_idx].cos_crit1:
         # total internal reflection
@@ -372,7 +372,7 @@ def cross_down_or_not(
         r, uz1 = r_fresnel(ni, nt, uz)
 
     if get_random() > r:
-        # transmitted to layer - 1
+        # transmitted to layer + 1
         if layer_idx == inp.num_layers:
             photon.uz = uz1
             record_t(0.0, photon, inp, tt_ra)
@@ -468,5 +468,5 @@ def hop_drop_spin(
     else:
         hop_drop_spin_in_tissue(photon, inp, layers, a_rz, rd_ra, tt_ra)
 
-    if not photon.dead and photon.w < inp.wth:
+    if photon.w < inp.wth and not photon.dead:
         roulette(photon)
