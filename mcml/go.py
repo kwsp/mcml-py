@@ -8,7 +8,6 @@ from mcml.rand import get_random
 
 Layers = list[Layer]
 
-njit = lambda x: x
 
 @njit
 def calc_r_specular(layers: Layers) -> float:
@@ -168,9 +167,7 @@ def hit_boundary(photon: Photon, layers: Layers) -> bool:
     elif uz < 0.0:
         dl_b = (layer.z0 - photon.z) / uz
     else:
-        # raise ValueError("photon.uz == 0.0, dl_b = inf")
-        breakpoint()
-        print("")
+        raise ValueError("photon.uz == 0.0, dl_b = inf")
 
     # Eq. (3.33)
     if uz != 0.0 and photon.s > dl_b:
@@ -196,7 +193,6 @@ def drop(photon: Photon, inp: InputParams, layers: Layers, a_rz: np.ndarray):
     y = photon.y
     layer = layers[photon.layer]
 
-    
     ia = nb.uint(np.arccos(-photon.uz) / inp.da)
     ia = nb.uint(min(ia, inp.na - 1))
 

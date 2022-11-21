@@ -13,11 +13,6 @@ class PhotonType(types.StructRef):
         return tuple((name, types.unliteral(typ)) for name, typ in fields)
 
 
-class Photon_(structref.StructRefProxy):
-    def __new__(cls, name, vector):
-        return structref.StructRefProxy
-
-
 # @dataclass
 # class Photon:
 # w: float = 1  # weight
@@ -62,7 +57,7 @@ class Photon(structref.StructRefProxy):
     @w.setter
     def w(self, val):
         return Photon_set_w(self, val)
-    
+
     @property
     def layer(self):
         return Photon_get_layer(self)
@@ -163,7 +158,7 @@ def make_Photon(r_sp: float, layers: list[Layer]) -> Photon:
         z=_z,
         ux=0.0,
         uy=0.0,
-        uz=0.0,
+        uz=1.0,
     )
 
 
@@ -175,6 +170,7 @@ def Photon_get_w(self):
 @njit
 def Photon_set_w(self, val):
     self.w = val
+
 
 @njit
 def Photon_get_layer(self):
