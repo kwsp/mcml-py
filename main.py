@@ -74,10 +74,11 @@ def main():
         out = OutputParams.init(rsp, inp)
 
         # run the current simulation as define by the input file
-        print(f"Running simulation {i} . . .")
+        print(f"Simulation {i + 1} started...")
         _start = time.perf_counter()
         do_one_run(rsp, inp, layers, out)
         elapsed = time.perf_counter() - _start
+        print(f"Simulation {i + 1} finished in {elapsed:.4g} sec.")
 
         # write results to the MCO file named in the input MCI
         write_mco(out_fname, inp, layers, out, elapsed)

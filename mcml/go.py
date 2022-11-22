@@ -9,7 +9,7 @@ from mcml.rand import get_random
 Layers = list[Layer]
 
 
-@njit
+@njit(nogil=True)
 def calc_r_specular(layers: Layers) -> float:
     """
     Compute the specular reflection.
@@ -33,12 +33,13 @@ def calc_r_specular(layers: Layers) -> float:
     return r1
 
 
-@njit
+@njit(nogil=True)
 def spin_theta(g: float) -> float:
     """
     Sample a new theta angle for photon propagation given
     the anisotropy g.
     """
+    cost = 0.0
     if g == 0.0:
         cost = 2.0 * get_random() - 1.0
     else:
@@ -48,7 +49,7 @@ def spin_theta(g: float) -> float:
     return cost  # cos(theta)
 
 
-@njit
+@njit(nogil=True)
 def spin(g: float, photon: Photon):
     """
     Choose a new direction for photon propagation by sampling
@@ -84,7 +85,7 @@ def spin(g: float, photon: Photon):
         photon.uz = -sint * cosp * tmp + uz * cost
 
 
-@njit
+@njit(nogil=True)
 def update_step_size_in_glass(photon: Photon, layers: Layers):
     """
     If uz != 0, return the photon step size in glass.
@@ -106,7 +107,7 @@ def update_step_size_in_glass(photon: Photon, layers: Layers):
     photon.s = dl_b
 
 
-@njit
+@njit(nogil=True)
 def update_step_size_in_tissue(photon: Photon, layers: Layers):
     """
     Pick a step size for a photon packet when it is in tissue.
@@ -127,7 +128,7 @@ def update_step_size_in_tissue(photon: Photon, layers: Layers):
         photon.sleft = 0.0
 
 
-@njit
+@njit(nogil=True)
 def hop(photon: Photon):
     """
     Move the photon s away in the current layer of medium
@@ -140,7 +141,7 @@ def hop(photon: Photon):
     photon.z += s * photon.uz
 
 
-@njit
+@njit(nogil=True)
 def roulette(photon: Photon):
     """
     The photon weight is small, and the photon packet tries to survive a roulette
@@ -154,7 +155,7 @@ def roulette(photon: Photon):
         photon.dead = True
 
 
-@njit
+@njit(nogil=True)
 def hit_boundary(photon: Photon, layers: Layers) -> bool:
     """
     Check if the step will hit the boundary.
