@@ -39,6 +39,26 @@ def make_Photon(
     """
     Constructor for a Photon object.
     This is the only public API of this module
+
+    Params
+    ------
+    r_sp: float. Specular reflectance
+    layers: list[Layer]. List of Layer objects.
+
+    # cartesian coordinates of photon packet
+    x: float = 0.0
+    y: float = 0.0
+    z: float = 0.0
+
+    # direction cosines of photon propagation
+    ux: float = 0.0
+    uy: float = 0.0
+    uz: float = 1.0
+
+
+    Returns
+    -------
+    Photon
     """
     photon = Photon(
         w=1 - r_sp,
