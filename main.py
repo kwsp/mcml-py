@@ -1,7 +1,10 @@
+import concurrent.futures
+import os
 import time
 
 from tqdm import tqdm
 from numba import njit
+from numba.typed import List
 import numpy as np
 
 from mcml.defs import InputParams, OutputParams, read_mci, write_mco
@@ -35,16 +38,65 @@ def launch_one_photon(
         )
 
 
-def do_one_run(rsp: float, inp: InputParams, layers: go.Layers, out: OutputParams):
+def _work(n: int, rsp: float, inp: InputParams, layers: go.Layers, bar=False):
+    """
+    Launch n photons.
+    """
+    # initialize output (result) buffers
+    out = OutputParams.init(rsp, inp)
+    layers = List(layers)  # Convert to numba.typed.List
+
+    if bar:
+        for _ in tqdm(range(n)):
+            launch_one_photon(rsp, inp, layers, out.a_rz, out.rd_ra, out.tt_ra)
+    else:
+        for _ in range(n):
+            launch_one_photon(rsp, inp, layers, out.a_rz, out.rd_ra, out.tt_ra)
+    return out
+
+
+def do_one_simulation_parallel(
+    rsp: float, inp: InputParams, layers: go.Layers, n_workers: int
+):
     """
     Run one simulation by launching `num_photons` as defined by the input.
     """
+
+    # No. photons to simulate per thread
+    n_photons = [inp.num_photons // n_workers] * (n_workers - 1)
+    this_n_photons = n_photons[0] + inp.num_photons % n_workers
+
+    with concurrent.futures.ProcessPoolExecutor(max_workers=n_workers - 1) as executor:
+        futures = []
+        for n_photon in n_photons:
+            f = executor.submit(_work, n_photon, rsp, inp, layers)
+            futures.append(f)
+
+        out = _work(this_n_photons, rsp, inp, layers, bar=True)
+        for f in futures:
+            out += f.result()
+
+    # launch_one_photon saves unscaled results to the 2D buffers.
+    # calculate the 1D results and scale all results properly
+    out = sum_scale_result(inp, layers, out)
+    return out
+
+
+def do_one_simulation(rsp: float, inp: InputParams, layers: go.Layers):
+    """
+    Run one simulation by launching `num_photons` as defined by the input.
+    Singled-threaded implementation
+    """
+    # initialize output (result) buffers
+    out = OutputParams.init(rsp, inp)
+    layers = List(layers)
     for _ in tqdm(range(inp.num_photons)):
         launch_one_photon(rsp, inp, layers, out.a_rz, out.rd_ra, out.tt_ra)
 
     # launch_one_photon saves unscaled results to the 2D buffers.
     # calculate the 1D results and scale all results properly
-    sum_scale_result(inp, layers, out)
+    out = sum_scale_result(inp, layers, out)
+    return out
 
 
 def cli():
@@ -66,17 +118,19 @@ def main():
     # parse the input MCI file
     inps = read_mci(args.input_file)
 
+    n_workers = os.cpu_count() or 4
+
     for i, (inp, layers, out_fname) in enumerate(inps):
         # calculate specular reflectance
         rsp = go.calc_r_specular(layers)
 
-        # initialize output (result) buffers
-        out = OutputParams.init(rsp, inp)
-
         # run the current simulation as define by the input file
-        print(f"Simulation {i + 1} started...")
+        print(f"Simulation {i + 1} started with {n_workers} workers...")
         _start = time.perf_counter()
-        do_one_run(rsp, inp, layers, out)
+
+        # out = do_one_simulation(rsp, inp, layers)
+        out = do_one_simulation_parallel(rsp, inp, layers, n_workers)
+
         elapsed = time.perf_counter() - _start
         print(f"Simulation {i + 1} finished in {elapsed:.4g} sec.")
 

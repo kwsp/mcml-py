@@ -9,7 +9,6 @@ from mcml.rand import get_random
 Layers = list[Layer]
 
 
-@njit(nogil=True)
 def calc_r_specular(layers: Layers) -> float:
     """
     Compute the specular reflection.

@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import NamedTuple
 from dataclasses import dataclass
 import numpy as np
-from numba.typed import List
+import copy
 
 
 WEIGHT = 1e-4
@@ -112,8 +112,7 @@ def read_mci(fname: str) -> list[tuple[InputParams, list[Layer], str]]:
 
     n_runs = parse(next(it), int)[0]
 
-    # inputs: list[tuple[InputParams, list[Layer], str]] = []
-    inputs: List[tuple[InputParams, list[Layer], str]] = List()
+    inputs: list[tuple[InputParams, list[Layer], str]] = []
 
     for _ in range(n_runs):
         out_fname = parse(next(it), str)[0]
@@ -165,7 +164,7 @@ def read_mci(fname: str) -> list[tuple[InputParams, list[Layer], str]]:
             _layers[i]["cos_crit0"] = cos_crit0
             _layers[i]["cos_crit1"] = cos_crit1
 
-        layers: list[Layer] = List([Layer(**l) for l in _layers])
+        layers: list[Layer] = [Layer(**l) for l in _layers]
 
         inp = InputParams(
             nr=nr,
@@ -187,27 +186,32 @@ def read_mci(fname: str) -> list[tuple[InputParams, list[Layer], str]]:
 class OutputParams:
     # specular reflectance
     rsp: float
+
     rd_ra: np.ndarray  # 2D distribution of diffuse reflectance [1/cm^2 sr]
-    rd_r: np.ndarray  # 1D radial distribution of diffuse reflectance  [1/cm2]
-    rd_a: np.ndarray  # 1D angular distribution of diffuse reflectance  [1/cm2]
-    rd: float  # total diffuse reflectance [1/cm2]
-
     a_rz: np.ndarray  # 2D probability density in turbid media over r & z [1/cm3]
-    a_z: np.ndarray  # 1D probability density over z [1/cm]
-    a_l: np.ndarray  # each layer's absorption probability [1/cm]
-    a: float  # total absorption probability # [1/cm]
-
     tt_ra: np.ndarray  # 2D distribution of total transmittance [1/(cm2 sr)]
-    tt_r: np.ndarray  # 1D radial distribution of transmittance [1/(cm2)]
-    tt_a: np.ndarray  # 1D angular distribution of transmittance [1/sr]
-    tt: float  # total transmittance [1/sr]
+
+    rd_r: np.ndarray | None = (
+        None  # 1D radial distribution of diffuse reflectance  [1/cm2]
+    )
+    rd_a: np.ndarray | None = (
+        None  # 1D angular distribution of diffuse reflectance  [1/cm2]
+    )
+    rd: float = 0.0  # total diffuse reflectance [1/cm2]
+
+    a_z: np.ndarray | None = None  # 1D probability density over z [1/cm]
+    a_l: np.ndarray | None = None  # each layer's absorption probability [1/cm]
+    a: float = 0.0  # total absorption probability # [1/cm]
+
+    tt_r: np.ndarray | None = None  # 1D radial distribution of transmittance [1/(cm2)]
+    tt_a: np.ndarray | None = None  # 1D angular distribution of transmittance [1/sr]
+    tt: float = 0.0  # total transmittance [1/sr]
 
     @classmethod
     def init(cls, rsp: float, inp: InputParams) -> OutputParams:
         nz = inp.nz
         nr = inp.nr
         na = inp.na
-        nl = inp.num_layers
         assert nz > 0 and nr > 0 and na > 0
 
         return cls(
@@ -216,15 +220,17 @@ class OutputParams:
             a=0.0,
             tt=0.0,
             rd_ra=np.zeros((nr, na)),
-            rd_r=np.zeros(nr),
-            rd_a=np.zeros(na),
             a_rz=np.zeros((nr, nz)),
-            a_z=np.zeros(nz),
-            a_l=np.zeros(nl + 2),
             tt_ra=np.zeros((nr, na)),
-            tt_r=np.zeros(nr),
-            tt_a=np.zeros(na),
         )
+
+    def __add__(self, other: OutputParams):
+        assert self.rsp == other.rsp
+        res = copy.deepcopy(self)
+        res.rd_ra += other.rd_ra
+        res.a_rz += other.a_rz
+        res.tt_ra += other.tt_ra
+        return res
 
 
 def write_mco(

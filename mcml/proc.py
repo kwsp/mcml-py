@@ -34,6 +34,7 @@ def _sum_2d_A(inp: InputParams, layers: list[Layer], out: OutputParams):
     """
     out.a_z = out.a_rz.sum(axis=0)
 
+    out.a_l = np.zeros(inp.nz)
     for iz in range(0, inp.nz):
         out.a_l[_iz_to_layer(iz, inp.dz, layers)] += out.a_z[iz]
 
@@ -76,12 +77,16 @@ def _scale_rd_tt(inp: InputParams, out: OutputParams):
             out.tt_ra[ir][ia] *= scale2
 
     scale1 = 2.0 * np.pi * dr * dr * n_photons
+    out.rd_r = np.zeros(nr)
+    out.tt_r = np.zeros(nr)
     for ir in range(nr):
         scale2 = 1.0 / ((ir + 0.5) * scale1)
         out.rd_r[ir] *= scale2
         out.tt_r[ir] *= scale2
 
     scale1 = 2.0 * np.pi * da * n_photons
+    out.rd_a = np.zeros(na)
+    out.tt_a = np.zeros(na)
     for ia in range(na):
         scale2 = 1.0 / (np.sin((ia + 0.5) * da) * scale1)
         out.rd_a[ia] *= scale2
@@ -111,11 +116,13 @@ def _scale_a(inp: InputParams, out: OutputParams):
 
     #  Scale A_z.
     scale1 = 1.0 / (dz * n_photons)
+    out.a_z = np.zeros(nz)
     for iz in range(nz):
         out.a_z[iz] *= scale1
 
     # Scale A_l. Avoid int/int.
     scale1 = 1.0 / float(n_photons)
+    out.a_l = np.zeros(inp.num_layers + 2)
     for il in range(inp.num_layers + 2):
         out.a_l[il] *= scale1
 
@@ -132,3 +139,4 @@ def sum_scale_result(inp: InputParams, layers: list[Layer], out: OutputParams):
 
     _scale_rd_tt(inp, out)
     _scale_a(inp, out)
+    return out
