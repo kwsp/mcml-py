@@ -1,5 +1,7 @@
+import multiprocessing
 import concurrent.futures
 import os
+import sys
 import time
 
 from tqdm import tqdm
@@ -38,7 +40,7 @@ def launch_one_photon(
         )
 
 
-def _work(n: int, rsp: float, inp: InputParams, layers: go.Layers, bar=False):
+def _work(n: int, rsp: float, inp: InputParams, layers: go.Layers, bar_position: int, lock):
     """
     Launch n photons.
     """
@@ -46,35 +48,35 @@ def _work(n: int, rsp: float, inp: InputParams, layers: go.Layers, bar=False):
     out = OutputParams.init(rsp, inp)
     layers = List(layers)  # Convert to numba.typed.List
 
-    if bar:
-        for _ in tqdm(range(n)):
+    with tqdm(desc=f"Worker {bar_position}", total=n, position=bar_position, file=sys.stdout, leave=False) as _bar:
+        for i in range(n):
             launch_one_photon(rsp, inp, layers, out.a_rz, out.rd_ra, out.tt_ra)
-    else:
-        for _ in range(n):
-            launch_one_photon(rsp, inp, layers, out.a_rz, out.rd_ra, out.tt_ra)
+            if (i+1) % 100 == 0:
+                with lock:
+                    _bar.update(100)
+    with lock:
+        sys.stdout.flush()
+
     return out
 
 
 def do_one_simulation_parallel(
-    rsp: float, inp: InputParams, layers: go.Layers, n_workers: int
+    rsp: float, inp: InputParams, layers: go.Layers, n_workers: int, executor, lock
 ):
     """
     Run one simulation by launching `num_photons` as defined by the input.
     """
-
     # No. photons to simulate per thread
-    n_photons = [inp.num_photons // n_workers] * (n_workers - 1)
-    this_n_photons = n_photons[0] + inp.num_photons % n_workers
+    n_photons = inp.num_photons // n_workers
+    this_n_photons = n_photons + inp.num_photons % n_workers
 
-    with concurrent.futures.ProcessPoolExecutor(max_workers=n_workers - 1) as executor:
-        futures = []
-        for n_photon in n_photons:
-            f = executor.submit(_work, n_photon, rsp, inp, layers)
-            futures.append(f)
-
-        out = _work(this_n_photons, rsp, inp, layers, bar=True)
-        for f in futures:
-            out += f.result()
+    futures = [
+        executor.submit(_work, n_photons, rsp, inp, layers, i, lock)
+        for i in range(1, n_workers)
+    ]
+    out = _work(this_n_photons, rsp, inp, layers, 0, lock)
+    for f in futures:
+        out += f.result()
 
     # launch_one_photon saves unscaled results to the 2D buffers.
     # calculate the 1D results and scale all results properly
@@ -118,24 +120,30 @@ def main():
     # parse the input MCI file
     inps = read_mci(args.input_file)
 
-    n_workers = os.cpu_count() or 4
+    # Use max 4 workers, since the overhead of pickling results is high
+    n_workers = min(os.cpu_count() or 4, 4)
 
-    for i, (inp, layers, out_fname) in enumerate(inps):
-        # calculate specular reflectance
-        rsp = go.calc_r_specular(layers)
+    print()
+    lock = multiprocessing.Manager().Lock()
+    with concurrent.futures.ProcessPoolExecutor(max_workers=n_workers - 1) as executor:
+        for i, (inp, layers, out_fname) in enumerate(inps):
+            # calculate specular reflectance
+            rsp = go.calc_r_specular(layers)
 
-        # run the current simulation as define by the input file
-        print(f"Simulation {i + 1} started with {n_workers} workers...")
-        _start = time.perf_counter()
+            # run the current simulation as define by the input file
+            with lock:
+                print(f"Simulation {i+1}/{len(inps)} started with {n_workers} workers...", flush=True)
+            _start = time.perf_counter()
 
-        # out = do_one_simulation(rsp, inp, layers)
-        out = do_one_simulation_parallel(rsp, inp, layers, n_workers)
+            # out = do_one_simulation(rsp, inp, layers)
+            out = do_one_simulation_parallel(rsp, inp, layers, n_workers, executor, lock)
 
-        elapsed = time.perf_counter() - _start
-        print(f"Simulation {i + 1} finished in {elapsed:.4g} sec.")
+            elapsed = time.perf_counter() - _start
+            with lock:
+                print(f"\rSimulation {i + 1}/{len(inps)} finished in {elapsed:.4g} sec.\n", flush=True)
 
-        # write results to the MCO file named in the input MCI
-        write_mco(out_fname, inp, layers, out, elapsed)
+            # write results to the MCO file named in the input MCI
+            write_mco(out_fname, inp, layers, out, elapsed)
 
 
 if __name__ == "__main__":
