@@ -77,16 +77,16 @@ def _scale_rd_tt(inp: InputParams, out: OutputParams):
             out.tt_ra[ir][ia] *= scale2
 
     scale1 = 2.0 * np.pi * dr * dr * n_photons
-    out.rd_r = np.zeros(nr)
-    out.tt_r = np.zeros(nr)
+    assert out.rd_r is not None
+    assert out.tt_r is not None
     for ir in range(nr):
         scale2 = 1.0 / ((ir + 0.5) * scale1)
         out.rd_r[ir] *= scale2
         out.tt_r[ir] *= scale2
 
     scale1 = 2.0 * np.pi * da * n_photons
-    out.rd_a = np.zeros(na)
-    out.tt_a = np.zeros(na)
+    assert out.rd_a is not None
+    assert out.tt_a is not None
     for ia in range(na):
         scale2 = 1.0 / (np.sin((ia + 0.5) * da) * scale1)
         out.rd_a[ia] *= scale2
@@ -116,7 +116,7 @@ def _scale_a(inp: InputParams, out: OutputParams):
 
     #  Scale A_z.
     scale1 = 1.0 / (dz * n_photons)
-    out.a_z = np.zeros(nz)
+    assert out.a_z is not None
     for iz in range(nz):
         out.a_z[iz] *= scale1
 
