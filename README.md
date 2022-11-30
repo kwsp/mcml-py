@@ -6,23 +6,37 @@ Port of [MCML (Monte Carlo Multi-Layered)](https://omlc.org/software/mc/mcml/ind
 
 ## Getting started
 
-Clone the repo (or download the zip file and extract).
+1. Clone the repo (or download the zip file and extract).
 
-Create a virtual environment. Use [Miniconda](https://docs.conda.io/en/latest/miniconda.html) if you don't know what that means.
-
-After installing miniconda, run
+2. Create a virtual environment. Use [Miniconda](https://docs.conda.io/en/latest/miniconda.html) if you don't know what that means. After installing miniconda, open "Anaconda Powershell Prompt" and run
 
 ```
 conda create -n mcml python=3.10 numba tqdm
 ```
 
-Activate the virtual environment:
+This creates a new virtual environment named `mcml`, and installs Python 3.10 along with `numba` and `tqdm`.
+
+4. Activate the `mcml` virtual environment:
 
 ```
 conda activate mcml
 ```
 
-Run the MCML main program with a sample input file:
+5. `cd` into the working directory. This is where you cloned this git repo, or where you unzipped the downloaded zip file.
+
+```
+cd [path to mcml-py]
+```
+
+6. Run the MCML main program with a sample input file.
+
+On Windows:
+
+```
+python main.py sample.mci
+```
+
+On Unix
 
 ```
 python3 main.py sample.mci
