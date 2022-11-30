@@ -139,11 +139,14 @@ def main():
             out = do_one_simulation_parallel(rsp, inp, layers, n_workers, executor, lock)
 
             elapsed = time.perf_counter() - _start
-            with lock:
-                print(f"\rSimulation {i + 1}/{len(inps)} finished in {elapsed:.4g} sec.\n", flush=True)
 
             # write results to the MCO file named in the input MCI
             write_mco(out_fname, inp, layers, out, elapsed)
+
+            with lock:
+                print(f"\rSimulation {i + 1}/{len(inps)} finished in {elapsed:.4g} sec.")
+                print(f"Wrote output to {out_fname}\n")
+                sys.stdout.flush()
 
 
 if __name__ == "__main__":
