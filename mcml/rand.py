@@ -1,8 +1,8 @@
 import numpy as np
-import numba
+from numba import njit
 
 
-@numba.jit
+@njit
 def get_random() -> float:
     """
     Make sure >0
