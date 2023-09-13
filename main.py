@@ -40,7 +40,9 @@ def launch_one_photon(
         )
 
 
-def _work(n: int, rsp: float, inp: InputParams, layers: go.Layers, bar_position: int, lock):
+def _work(
+    n: int, rsp: float, inp: InputParams, layers: go.Layers, bar_position: int, lock
+):
     """
     Launch n photons.
     """
@@ -48,10 +50,16 @@ def _work(n: int, rsp: float, inp: InputParams, layers: go.Layers, bar_position:
     out = OutputParams.init(rsp, inp)
     layers = List(layers)  # Convert to numba.typed.List
 
-    with tqdm(desc=f"Worker {bar_position}", total=n, position=bar_position, file=sys.stdout, leave=False) as _bar:
+    with tqdm(
+        desc=f"Worker {bar_position}",
+        total=n,
+        position=bar_position,
+        file=sys.stdout,
+        leave=False,
+    ) as _bar:
         for i in range(n):
             launch_one_photon(rsp, inp, layers, out.a_rz, out.rd_ra, out.tt_ra)
-            if (i+1) % 100 == 0:
+            if (i + 1) % 100 == 0:
                 with lock:
                     _bar.update(100)
     with lock:
@@ -132,11 +140,16 @@ def main():
 
             # run the current simulation as define by the input file
             with lock:
-                print(f"Simulation {i+1}/{len(inps)} started with {n_workers} workers...", flush=True)
+                print(
+                    f"Simulation {i+1}/{len(inps)} started with {n_workers} workers...",
+                    flush=True,
+                )
             _start = time.perf_counter()
 
             # out = do_one_simulation(rsp, inp, layers)
-            out = do_one_simulation_parallel(rsp, inp, layers, n_workers, executor, lock)
+            out = do_one_simulation_parallel(
+                rsp, inp, layers, n_workers, executor, lock
+            )
 
             elapsed = time.perf_counter() - _start
 
@@ -144,7 +157,9 @@ def main():
             write_mco(out_fname, inp, layers, out, elapsed)
 
             with lock:
-                print(f"\rSimulation {i + 1}/{len(inps)} finished in {elapsed:.4g} sec.")
+                print(
+                    f"\rSimulation {i + 1}/{len(inps)} finished in {elapsed:.4g} sec."
+                )
                 print(f"Wrote output to {out_fname}\n")
                 sys.stdout.flush()
 
